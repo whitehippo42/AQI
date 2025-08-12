@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from datetime import datetime, timedelta
 import json
@@ -7,6 +7,7 @@ import random
 import calendar
 import hashlib
 import math
+import os
 
 # Import the FIXED AQI prediction system
 try:
@@ -16,9 +17,13 @@ except ImportError:
     print("AQI System not found. Please run aqi_prediction_system.py first.")
     HAS_AQI_SYSTEM = False
 
-app = Flask(__name__)
-CORS(app)  # Enable CORS for frontend requests
+app = Flask(__name__, static_folder='.', static_url_path='')  # serve files from repo root
+CORS(app)
 
+@app.route('/')
+def root():
+    return send_from_directory('.', 'index.html')
+    
 print("🚀 ENHANCED AirSight Flask API with REAL ML Models")
 print("=" * 60)
 
@@ -1123,4 +1128,5 @@ if __name__ == '__main__':
     print("✅ Model performance metrics restored to high values")
     print("✅ No duplicate routes - single unified pollutants endpoint")
     
+
     app.run(debug=True, host='0.0.0.0', port=5000)
