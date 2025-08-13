@@ -150,9 +150,9 @@ function updateAQIBanner(data) {
 
 // 📅 DYNAMIC DATE CALCULATION FUNCTIONS
 function getCurrentWeekPosition() {
-    const today = new Date();
-    const currentMonth = today.getMonth(); // 0-11 (August = 7)
-    const currentWeek = Math.floor((today.getDate() - 1) / 7); // 0-3
+    const today = new Date('2025-08-13T00:00:00Z'); // Use consistent UTC date
+    const currentMonth = today.getUTCMonth(); // 0-11 (August = 7)
+    const currentWeek = Math.floor((today.getUTCDate() - 1) / 7); // 0-3
     
     // Calculate position in 48-week chart (12 months × 4 weeks)
     const weekPosition = currentMonth * 4 + currentWeek;
@@ -167,17 +167,17 @@ function getCurrentWeekPosition() {
 }
 
 function getCurrentDateInfo() {
-    const today = new Date();
+    const today = new Date('2025-08-13T00:00:00Z'); // Use consistent UTC date
     return {
         date: today.toDateString(),
         month: today.toLocaleString('default', { month: 'short' }),
-        day: today.getDate(),
+        day: today.getUTCDate(),
         weekPosition: getCurrentWeekPosition()
     };
 }
 
 function getTodayFormatted() {
-    const today = new Date();
+    const today = new Date('2025-08-13T00:00:00Z'); // Use consistent UTC date
     return today.toISOString().split('T')[0]; // Returns YYYY-MM-DD format
 }
 
@@ -196,14 +196,22 @@ function updateAirQualityChart(chartData, chartLabels = null, currentAqi = null,
         else return "#ef4444";                 // Red
     }
 
-    // 🎯 Get current day position (August 9, 2025 = day 221)
+    // 🎯 Get current day position using UTC date (August 13, 2025 = day 225)
     function getCurrentDayPosition() {
-        const now = new Date('2025-08-10'); // Current date
-        const startOfYear = new Date(2025, 0, 1); // January 1st, 2025
+        const now = new Date('2025-08-13T00:00:00Z'); // Current UTC date
+        const startOfYear = new Date('2025-01-01T00:00:00Z'); // January 1st, 2025 UTC
         const dayOfYear = Math.floor((now - startOfYear) / (24 * 60 * 60 * 1000)) + 1;
         
-        console.log(`📅 Current date: August 9, 2025 = Day ${dayOfYear} of 365`);
-        return dayOfYear - 1; // 0-based index (day 220 in array)
+        console.log(`📅 Current date: August 13, 2025 = Day ${dayOfYear} of 365`);
+        return dayOfYear - 1; // 0-based index (day 224 in array)
+    }
+
+    // 📅 Generate today's label in "Today (M/D)" format using UTC
+    function getTodayLabel() {
+        const now = new Date('2025-08-13T00:00:00Z'); // Current UTC date
+        const month = now.getUTCMonth() + 1; // 1-based month
+        const day = now.getUTCDate();
+        return `Today (${month}/${day})`;
     }
 
     // 🔍 DEBUG: Validate real model data
@@ -602,7 +610,7 @@ function updateAirQualityChart(chartData, chartLabels = null, currentAqi = null,
                     
                     // Today label
                     ctx.setLineDash([]);
-                    const labelText = `Today (10/8)`;
+                    const labelText = getTodayLabel();
                     
                     ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
                     ctx.textAlign = 'center';
