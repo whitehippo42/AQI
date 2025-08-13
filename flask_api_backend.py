@@ -1044,9 +1044,10 @@ def get_recommendations():
     """Get health recommendations based on AQI"""
     try:
         date_str = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+        model_name = request.args.get('model', 'gbr')  # Use same model as dashboard
         
-        # FIXED: Get proper AQI for the date
-        aqi = get_consistent_aqi_for_date(date_str)
+        # FIXED: Use same AQI calculation as dashboard for consistency
+        aqi = get_model_specific_aqi(date_str, model_name)
         
         if aqi <= 50:
             recommendations = [

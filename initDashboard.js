@@ -4,6 +4,8 @@
 // ===================================
 
 let dashboardChart = null;
+// Single source of truth for current AQI value
+let currentAQIValue = null;
 
 async function initDashboard() {
     try {
@@ -11,7 +13,7 @@ async function initDashboard() {
         
         const apiDate = window.AirSightDate.getCurrentDate();
         const defaultModel = 'gbr';
-        const response = await fetch(`${API_BASE_URL}/dashboard?date=${apiDate}&model=${defaultModel}`);  // ✅ ADD model
+        const response = await fetch(`${API_BASE_URL}/dashboard?date=${apiDate}&model=${defaultModel}`);
 
         const data = await response.json();
         
@@ -22,12 +24,16 @@ async function initDashboard() {
         console.log('Dashboard data received for date:', apiDate, data);
         console.log('🎯 Current AQI:', data.current_aqi, 'at week position:', data.current_week_position);
         
+        // Store AQI in single source of truth
+        currentAQIValue = data.current_aqi;
+        console.log('📍 AQI stored as single source:', currentAQIValue);
+        
         updateDashboardCards(data);
         updateAQIBanner(data);
         
         // FIXED: Pass both chart data and current week position
         updateAirQualityChart(data.chart_aqi, null, data.current_aqi, data.current_week_position);
-        await updateProfessionalRecommendations(null, defaultModel);
+        await updateProfessionalRecommendations(apiDate, defaultModel);
         
         hideLoadingState();
         
@@ -912,6 +918,22 @@ async function updateProfessionalRecommendations(customDate = null, customModel 
         
         console.log('✅ Recommendations API response:', data);
         
+        // VALIDATION: Check AQI consistency
+        if (currentAQIValue !== null && data.aqi !== undefined) {
+            if (Math.abs(currentAQIValue - data.aqi) > 0.5) {
+                console.warn('⚠️ AQI MISMATCH DETECTED!');
+                console.warn(`   Dashboard AQI: ${currentAQIValue}`);
+                console.warn(`   Recommendations AQI: ${data.aqi}`);
+                console.warn('🔧 Using dashboard AQI for consistency');
+                
+                // Use dashboard AQI as single source of truth
+                data.aqi = currentAQIValue;
+                data.category = getAQICategory(currentAQIValue);
+            } else {
+                console.log('✅ AQI values are consistent:', currentAQIValue);
+            }
+        }
+        
         const recommendationList = document.getElementById("recommendation-list");
         if (!recommendationList) {
             console.error('❌ Recommendation list element not found');
@@ -926,7 +948,7 @@ async function updateProfessionalRecommendations(customDate = null, customModel 
         
         console.log(`📋 Generated ${recommendations.length} professional recommendations for AQI ${data.aqi}`);
         
-        // Create status card
+        // Create status card with validated AQI
         const statusCard = createStatusCard(data.aqi, data.category);
         
         let recommendationsHTML = statusCard;
@@ -955,32 +977,44 @@ async function updateProfessionalRecommendations(customDate = null, customModel 
     } catch (error) {
         console.error('❌ Error updating recommendations:', error);
         
-        // Fallback recommendations (same as before)
+        // Fallback recommendations using current AQI if available
         const recommendationList = document.getElementById("recommendation-list");
         if (recommendationList) {
-            recommendationList.innerHTML = `
-                <div class="aqi-status-card">
-                    <div class="status-indicator loading"></div>
-                    <div class="status-content">
-                        <span class="status-title">Loading AQI Data...</span>
-                        <span class="status-value">Please wait</span>
-                    </div>
-                </div>
-                <div class="rec-card medium">
-                    <div class="rec-left">
-                        <div class="rec-mini-icon medium">
-                            <i class="fa-solid fa-info-circle"></i>
+            const fallbackAQI = currentAQIValue || 50; // Use stored AQI or moderate fallback
+            console.log(`🔄 Using fallback AQI: ${fallbackAQI}`);
+            
+            const fallbackCategory = getAQICategory(fallbackAQI);
+            const fallbackRecommendations = getProfessionalRecommendations(fallbackAQI, fallbackCategory);
+            const fallbackStatusCard = createStatusCard(fallbackAQI, fallbackCategory);
+            
+            let fallbackHTML = fallbackStatusCard;
+            fallbackRecommendations.forEach((rec, index) => {
+                fallbackHTML += `
+                    <div class="rec-card ${rec.priority}" style="animation-delay: ${index * 0.1}s">
+                        <div class="rec-left">
+                            <div class="rec-mini-icon ${rec.iconType}">
+                                <i class="fa-solid ${rec.icon}"></i>
+                            </div>
+                            <div class="rec-border ${rec.priority}"></div>
                         </div>
-                        <div class="rec-border medium"></div>
+                        <div class="rec-text">
+                            <h4>${rec.title}</h4>
+                            <p>${rec.description}</p>
+                        </div>
                     </div>
-                    <div class="rec-text">
-                        <h4>Stay Informed</h4>
-                        <p>Monitor air quality updates regularly for health guidance.</p>
-                    </div>
-                </div>
-            `;
+                `;
+            });
+            
+            recommendationList.innerHTML = fallbackHTML;
         }
     }
+}
+
+function getAQICategory(aqi) {
+    if (aqi <= 50) return "Good";
+    else if (aqi <= 100) return "Moderate";
+    else if (aqi <= 150) return "Unhealthy for Sensitive Groups";
+    else return "Unhealthy";
 }
 
 function createStatusCard(aqi, category) {
@@ -1226,51 +1260,32 @@ async function updateDashboardDate() {
     const datePicker = document.getElementById('dashboard-date-picker');
     if (datePicker) {
         const selectedDate = datePicker.value;
-        const defaultModel = 'gbr'; // ✅ Add this
+        const defaultModel = 'gbr';
         console.log('🗓️ Updating dashboard for date:', selectedDate);
         
-        // ✅ Add model parameter
-        const response = await fetch(`${API_BASE_URL}/dashboard?date=${selectedDate}&model=${defaultModel}`);
-        const data = await response.json();
-        
-        if (!response.ok) {
-            throw new Error(data.error || 'Failed to fetch dashboard data');
-        }
-        
-        updateDashboardCards(data);
-        updateAQIBanner(data);
-        updateAirQualityChart(data.chart_aqi, null, data.current_aqi, data.current_week_position);
-        
-        // ✅ Update recommendations with the same selected date and model
-        const recResponse = await fetch(`${API_BASE_URL}/recommendations?date=${selectedDate}&model=${defaultModel}`);
-        const recData = await recResponse.json();
-        
-        if (recResponse.ok) {
-            // Update recommendations with new data
-            const recommendationList = document.getElementById("recommendation-list");
-            if (recommendationList) {
-                const recommendations = getProfessionalRecommendations(recData.aqi, recData.category);
-                const statusCard = createStatusCard(recData.aqi, recData.category);
-                
-                let recommendationsHTML = statusCard;
-                recommendations.forEach((rec, index) => {
-                    recommendationsHTML += `
-                        <div class="rec-card ${rec.priority}" style="animation-delay: ${index * 0.1}s">
-                            <div class="rec-left">
-                                <div class="rec-mini-icon ${rec.iconType}">
-                                    <i class="fa-solid ${rec.icon}"></i>
-                                </div>
-                                <div class="rec-border ${rec.priority}"></div>
-                            </div>
-                            <div class="rec-text">
-                                <h4>${rec.title}</h4>
-                                <p>${rec.description}</p>
-                            </div>
-                        </div>
-                    `;
-                });
-                recommendationList.innerHTML = recommendationsHTML;
+        try {
+            // Fetch dashboard data
+            const response = await fetch(`${API_BASE_URL}/dashboard?date=${selectedDate}&model=${defaultModel}`);
+            const data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to fetch dashboard data');
             }
+            
+            // Update single source of truth
+            currentAQIValue = data.current_aqi;
+            console.log('📍 AQI updated for new date:', currentAQIValue);
+            
+            updateDashboardCards(data);
+            updateAQIBanner(data);
+            updateAirQualityChart(data.chart_aqi, null, data.current_aqi, data.current_week_position);
+            
+            // Update recommendations with consistency validation
+            await updateProfessionalRecommendations(selectedDate, defaultModel);
+            
+        } catch (error) {
+            console.error('❌ Error updating dashboard date:', error);
+            showErrorState(error.message);
         }
     }
 }
