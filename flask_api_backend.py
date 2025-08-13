@@ -17,30 +17,21 @@ except ImportError:
     print("AQI System not found. Please run aqi_prediction_system.py first.")
     HAS_AQI_SYSTEM = False
 
-app = Flask(__name__, static_folder=".", static_url_path="")  # serve from repo root
+app = Flask(__name__, static_folder=".", static_url_path="")
+CORS(app)  # Enable CORS for all routes
 
-# allow only safe static extensions
-SAFE_EXTS = {
-    ".html", ".htm", ".css", ".js", ".mjs", ".map",
-    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp",
-    ".json", ".csv", ".txt", ".woff", ".woff2", ".ttf", ".eot"
-}
-
-@app.get("/")  # single home route only — do NOT define another "/" route elsewhere
+# Serve static files
+@app.route('/')
 def home():
-    return send_from_directory(app.root_path, "index.html")
+    return send_from_directory('.', 'index.html')
 
-@app.get("/<path:filename>")
-def serve_public(filename: str):
-    ext = os.path.splitext(filename)[1].lower()
-    if filename.startswith(".") or ext not in SAFE_EXTS:
-        return ("Not found", 404)
-    full = os.path.join(app.root_path, filename)
-    if os.path.isfile(full):
-        return send_from_directory(app.root_path, filename)
-    return ("Not found", 404)
+@app.route('/<path:path>')
+def serve_static(path):
+    if os.path.splitext(path)[1] in SAFE_EXTS:
+        return send_from_directory('.', path)
+    return "File type not allowed", 403
 
-    
+  
 print("🚀 ENHANCED AirSight Flask API with REAL ML Models")
 print("=" * 60)
 
@@ -1126,6 +1117,8 @@ def get_aqi_category(aqi):
 if __name__ == '__main__':
     print("Starting AirSight API Server - COMPLETELY FIXED!")
     print("Model Status:", "FIXED_HIGH_PERFORMANCE")
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
     
     if models_trained and aqi_system:
         print("FIXED Model Performance Summary:")
@@ -1147,5 +1140,6 @@ if __name__ == '__main__':
     
 
     app.run(debug=True, host='0.0.0.0', port=5000)
+
 
 
