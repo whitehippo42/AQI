@@ -177,8 +177,7 @@ function getCurrentDateInfo() {
 }
 
 function getTodayFormatted() {
-    const today = new Date();
-    return today.toISOString().split('T')[0]; // Returns YYYY-MM-DD format
+    return window.AirSightDate.getCurrentDateUTC(); // Returns YYYY-MM-DD format in UTC
 }
 
 function updateAirQualityChart(chartData, chartLabels = null, currentAqi = null, currentDayPosition = null) {
@@ -196,14 +195,14 @@ function updateAirQualityChart(chartData, chartLabels = null, currentAqi = null,
         else return "#ef4444";                 // Red
     }
 
-    // 🎯 Get current day position (August 9, 2025 = day 221)
+    // 🎯 Get current day position using UTC time
     function getCurrentDayPosition() {
-        const now = new Date('2025-08-10'); // Current date
-        const startOfYear = new Date(2025, 0, 1); // January 1st, 2025
+        const now = window.AirSightDate.getCurrentDateObjectUTC(); // Use actual current UTC date
+        const startOfYear = new Date(Date.UTC(now.getUTCFullYear(), 0, 1)); // January 1st of current year
         const dayOfYear = Math.floor((now - startOfYear) / (24 * 60 * 60 * 1000)) + 1;
         
-        console.log(`📅 Current date: August 9, 2025 = Day ${dayOfYear} of 365`);
-        return dayOfYear - 1; // 0-based index (day 220 in array)
+        console.log(`📅 Current date: ${now.toDateString()} = Day ${dayOfYear} of 365`);
+        return dayOfYear - 1; // 0-based index
     }
 
     // 🔍 DEBUG: Validate real model data
@@ -398,15 +397,23 @@ function updateAirQualityChart(chartData, chartLabels = null, currentAqi = null,
                             const isToday = dataIndex === todayPosition;
                             
                             if (isToday) {
-                                return `📍 TODAY - August 10, 2025`;
-                            } else if (chartData.length === 365) {
-                                const date = new Date(2025, 0, dataIndex + 1);
+                                const currentDate = window.AirSightDate.getCurrentDateObjectUTC();
+                                const formattedDate = currentDate.toLocaleDateString('en-US', {
+                                    month: 'long',
+                                    day: 'numeric',
+                                    year: 'numeric'
+                                });
+                                return `📍 TODAY - ${formattedDate}`;
+                            }else if (chartData.length === 365) {
+                                const currentYear = window.AirSightDate.getCurrentDateObjectUTC().getUTCFullYear();
+                                const date = new Date(currentYear, 0, dataIndex + 1);
                                 return `${date.toDateString()}`;
                             } else if (chartData.length === 48) {
                                 const monthIndex = Math.floor(dataIndex / 4);
                                 const weekIndex = dataIndex % 4;
                                 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-                                return `${monthNames[monthIndex]} 2025 - Week ${weekIndex + 1}`;
+                                const currentYear = window.AirSightDate.getCurrentDateObjectUTC().getUTCFullYear();
+                                return `${monthNames[monthIndex]} ${currentYear} - Week ${weekIndex + 1}`;
                             } else {
                                 return `Data Point ${dataIndex + 1}`;
                             }
