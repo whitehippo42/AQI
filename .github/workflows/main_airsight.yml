@@ -1,4 +1,4 @@
-name: Deploy AirSight to Azure Web App
+name: Build & Deploy AirSight to Azure Web App
 
 on:
   push:
@@ -10,43 +10,61 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     env:
-      # Change if your build workflow publishes a different artifact name
-      ARTIFACT_NAME: airsight-artifact
-      ARTIFACT_DOWNLOAD_PATH: artifact_tmp
+      APP_NAME: AirSight              # <-- EDIT if your App Service name differs
+      DEPLOY_PATH: .                  # will be overwritten if we find a build folder
 
     steps:
-      - name: Checkout repo
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # If your build is produced in a separate workflow, download it:
-      - name: Download build artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ env.ARTIFACT_NAME }}
-          path: ${{ env.ARTIFACT_DOWNLOAD_PATH }}
-
-      # Flatten artifact into workspace root so webapps-deploy can deploy "."
-      - name: Flatten artifact into workspace root
+      # ---------- Optional: Node build (if package.json present) ----------
+      - name: Detect Node project
+        id: detect_node
         shell: bash
         run: |
-          shopt -s dotglob
-          echo "Before flatten:"
-          ls -la
-          if [ -d "${{ env.ARTIFACT_DOWNLOAD_PATH }}" ]; then
-            echo "Moving contents of '${{ env.ARTIFACT_DOWNLOAD_PATH }}' to workspace root..."
-            mv "${{ env.ARTIFACT_DOWNLOAD_PATH }}"/* .
-            rm -rf "${{ env.ARTIFACT_DOWNLOAD_PATH }}"
+          if [ -f "package.json" ]; then
+            echo "has_node=true" >> $GITHUB_OUTPUT
           else
-            echo "No artifact dir found; assuming build output already in repo root."
+            echo "has_node=false" >> $GITHUB_OUTPUT
           fi
-          echo "After flatten:"
-          ls -la
 
-      # 🔐 Azure login using your existing long secret names
+      - name: Setup Node
+        if: steps.detect_node.outputs.has_node == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install & Build (Node)
+        if: steps.detect_node.outputs.has_node == 'true'
+        run: |
+          npm ci
+          # If your app needs an explicit build, keep the next line.
+          # If it's a server-only Node app, this will just no-op if there's no script.
+          npm run build --if-present
+
+      # ---------- Decide what to deploy ----------
+      - name: Choose deploy path
+        id: choose_path
+        shell: bash
+        run: |
+          # Priority: common frontend build folders, then repo root
+          for d in build dist out .next nextjs .output public; do
+            if [ -d "$d" ]; then
+              echo "Found build folder: $d"
+              echo "DEPLOY_PATH=$d" >> $GITHUB_ENV
+              break
+            fi
+          done
+          echo "Deploying from: ${DEPLOY_PATH}"
+          echo "Contents:"
+          ls -la "${DEPLOY_PATH}"
+
+      # ---------- Azure Login (using your existing long secret names) ----------
       - name: Azure Login
         uses: azure/login@v2
         with:
@@ -54,10 +72,10 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_E90AD2769AFE4313B72013DAC9E3F102 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6EC81AD7847842CAA14260C11B733745 }}
 
-      # 🚀 Deploy the root folder (now containing your built app)
+      # ---------- Deploy ----------
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
-          app-name: AirSight              # change if your App Service name differs
-          slot-name: Production           # remove if deploying to default slot
-          package: .
+          app-name: ${{ env.APP_NAME }}
+          slot-name: ${{ env.SLOT_NAME }}
+          package: ${{ env.DEPLOY_PATH }}
