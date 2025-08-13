@@ -14,15 +14,15 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      APP_NAME: AirSight
-      environment: Production
-      DEPLOY_PATH: .                  # will be overwritten if we find a build folder
+      APP_NAME: AirSight            # <-- EDIT if your App Service name differs
+      SLOT_NAME: Production         # remove this line if using the default slot
+      DEPLOY_PATH: .                # will be overwritten if a build folder is found
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ---------- Optional: Node build (if package.json present) ----------
+      # ---------- Optional: Node build if package.json exists ----------
       - name: Detect Node project
         id: detect_node
         shell: bash
@@ -44,8 +44,6 @@ jobs:
         if: steps.detect_node.outputs.has_node == 'true'
         run: |
           npm ci
-          # If your app needs an explicit build, keep the next line.
-          # If it's a server-only Node app, this will just no-op if there's no script.
           npm run build --if-present
 
       # ---------- Decide what to deploy ----------
@@ -53,7 +51,6 @@ jobs:
         id: choose_path
         shell: bash
         run: |
-          # Priority: common frontend build folders, then repo root
           for d in build dist out .next nextjs .output public; do
             if [ -d "$d" ]; then
               echo "Found build folder: $d"
@@ -62,10 +59,23 @@ jobs:
             fi
           done
           echo "Deploying from: ${DEPLOY_PATH}"
-          echo "Contents:"
           ls -la "${DEPLOY_PATH}"
 
-      # ---------- Azure Login (using your existing long secret names) ----------
+      # ---------- Preflight: verify secrets are visible to this job ----------
+      - name: Verify Azure secrets
+        shell: bash
+        env:
+          CID: ${{ secrets.AZUREAPPSERVICE_CLIENTID_32FBB5890BF24D90BABB0420ADE93AAC }}
+          TID: ${{ secrets.AZUREAPPSERVICE_TENANTID_E90AD2769AFE4313B72013DAC9E3F102 }}
+          SID: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6EC81AD7847842CAA14260C11B733745 }}
+        run: |
+          MISSING=0
+          [ -z "$CID" ] && echo "::error::Missing secret: client-id" && MISSING=1
+          [ -z "$TID" ] && echo "::error::Missing secret: tenant-id" && MISSING=1
+          [ -z "$SID" ] && echo "::error::Missing secret: subscription-id" && MISSING=1
+          [ $MISSING -eq 1 ] && exit 1
+
+      # ---------- Azure Login (uses your selected repo secrets) ----------
       - name: Azure Login
         uses: azure/login@v2
         with:
@@ -80,5 +90,3 @@ jobs:
           app-name: ${{ env.APP_NAME }}
           slot-name: ${{ env.SLOT_NAME }}
           package: ${{ env.DEPLOY_PATH }}
-
-
