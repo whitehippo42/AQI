@@ -17,20 +17,24 @@ except ImportError:
     print("AQI System not found. Please run aqi_prediction_system.py first.")
     HAS_AQI_SYSTEM = False
 
-# Serve files from the repo root, but be careful what we expose
-app = Flask(__name__, static_folder=".", static_url_path="")
+app = Flask(__name__, static_folder=".", static_url_path="")  # serve from repo root
 
-# 1) Home page -> index.html in the root
-@app.get("/")
-def root():
+# allow only safe static extensions
+SAFE_EXTS = {
+    ".html", ".htm", ".css", ".js", ".mjs", ".map",
+    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp",
+    ".json", ".csv", ".txt", ".woff", ".woff2", ".ttf", ".eot"
+}
+
+@app.get("/")  # single home route only — do NOT define another "/" route elsewhere
+def home():
     return send_from_directory(app.root_path, "index.html")
 
 @app.get("/<path:filename>")
 def serve_public(filename: str):
-    # Don’t serve dotfiles or code files
-    if filename.startswith(".") or not os.path.splitext(filename)[1].lower() in SAFE_EXTS:
+    ext = os.path.splitext(filename)[1].lower()
+    if filename.startswith(".") or ext not in SAFE_EXTS:
         return ("Not found", 404)
-
     full = os.path.join(app.root_path, filename)
     if os.path.isfile(full):
         return send_from_directory(app.root_path, filename)
@@ -1143,4 +1147,5 @@ if __name__ == '__main__':
     
 
     app.run(debug=True, host='0.0.0.0', port=5000)
+
 
