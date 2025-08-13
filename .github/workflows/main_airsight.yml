@@ -2,8 +2,12 @@ name: Build and deploy Python app to Azure Web App - AirSight
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   workflow_dispatch:
+
+env:
+  WEBAPP_NAME: AirSight              # <- your App Service name
+  RESOURCE_GROUP: <YOUR-RG-NAME>     # <- fill if you want CI to set settings
 
 jobs:
   build:
@@ -13,12 +17,19 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
-        with: { python-version: '3.10' }
+        with:
+          python-version: '3.10'
 
       - name: Vendor dependencies into repo
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt -t .python_packages/lib/site-packages
+
+      - name: Sanity check artifact
+        run: |
+          test -f flask_api_backend.py || (echo "flask_api_backend.py missing" && exit 1)
+          test -f index.html || (echo "index.html missing" && exit 1)
+          python -c "import sys, pkgutil; print('gunicorn ok' if pkgutil.find_loader('gunicorn') else 'gunicorn MISSING')"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -34,7 +45,8 @@ jobs:
     permissions: { id-token: write, contents: read }
     steps:
       - uses: actions/download-artifact@v4
-        with: { name: python-app }
+        with:
+          name: python-app
 
       - name: Azure login
         uses: azure/login@v2
@@ -43,9 +55,23 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_73B1... }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_B9DE... }}
 
+      # OPTIONAL: make a new App Service work without any portal clicks
+      - name: Configure app settings and startup (Linux)
+        if: env.RESOURCE_GROUP != ''
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az webapp config appsettings set -g "${{ env.RESOURCE_GROUP }}" -n "${{ env.WEBAPP_NAME }}" --settings \
+              SCM_DO_BUILD_DURING_DEPLOYMENT=0 \
+              WEBSITE_RUN_FROM_PACKAGE=1 \
+              PYTHONPATH=/home/site/wwwroot/.python_packages/lib/site-packages \
+              WEBSITES_PORT=8000
+            az webapp config set -g "${{ env.RESOURCE_GROUP }}" -n "${{ env.WEBAPP_NAME }}" \
+              --startup-file 'bash -lc "python aqi_prediction_system.py & exec gunicorn --bind 0.0.0.0:${PORT:-8000} flask_api_backend:app"'
+
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
-          app-name: AirSight
-          slot-name: Production
+          app-name: ${{ env.WEBAPP_NAME }}
+          # slot-name: production         # uncomment ONLY if you actually use a slot
           package: .
