@@ -425,19 +425,19 @@ def generate_daily_chart_data(base_date):
 def get_dashboard_data():
     try:
         date_str = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
-        # model_name = request.args.get('model', 'gradient_boosting')  # ✅ ADD: Use gbr as default
+        model_name = request.args.get('model', 'gbr')  # Use same default as recommendations
         target_date = datetime.strptime(date_str, '%Y-%m-%d')
         
-        print(f"📅 Dashboard API called for date: {date_str}")
+        print(f"📅 Dashboard API called for date: {date_str}, model: {model_name}")
         
-        # ENHANCED: Get AQI with real ML model priority
-        current_aqi = get_model_specific_aqi(date_str, 'gbr')
+        # ENHANCED: Get AQI with real ML model priority using requested model
+        current_aqi = get_model_specific_aqi(date_str, model_name)
 
         # ENHANCED: Calculate next day AQI using same ML model system
         try:
             next_day_date = target_date + timedelta(days=1)
             next_day_date_str = next_day_date.strftime('%Y-%m-%d')
-            next_day_aqi = get_model_specific_aqi(next_day_date_str, 'gbr')
+            next_day_aqi = get_model_specific_aqi(next_day_date_str, model_name)
             print(f"✅ Next day AQI calculated: {next_day_aqi}")
         except Exception as e:
             print(f"❌ Next day prediction failed: {e}")
@@ -1044,9 +1044,10 @@ def get_recommendations():
     """Get health recommendations based on AQI"""
     try:
         date_str = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+        model_name = request.args.get('model', 'gbr')  # Use same model as dashboard
         
-        # FIXED: Get proper AQI for the date
-        aqi = get_consistent_aqi_for_date(date_str)
+        # FIXED: Use same AQI calculation as dashboard for consistency
+        aqi = get_model_specific_aqi(date_str, model_name)
         
         if aqi <= 50:
             recommendations = [
