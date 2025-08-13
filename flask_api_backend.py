@@ -17,12 +17,25 @@ except ImportError:
     print("AQI System not found. Please run aqi_prediction_system.py first.")
     HAS_AQI_SYSTEM = False
 
-app = Flask(__name__, static_folder='.', static_url_path='')  # serve files from repo root
-CORS(app)
+# Serve files from the repo root, but be careful what we expose
+app = Flask(__name__, static_folder=".", static_url_path="")
 
-@app.route('/')
+# 1) Home page -> index.html in the root
+@app.get("/")
 def root():
-    return send_from_directory('.', 'index.html')
+    return send_from_directory(app.root_path, "index.html")
+
+@app.get("/<path:filename>")
+def serve_public(filename: str):
+    # Don’t serve dotfiles or code files
+    if filename.startswith(".") or not os.path.splitext(filename)[1].lower() in SAFE_EXTS:
+        return ("Not found", 404)
+
+    full = os.path.join(app.root_path, filename)
+    if os.path.isfile(full):
+        return send_from_directory(app.root_path, filename)
+    return ("Not found", 404)
+
     
 print("🚀 ENHANCED AirSight Flask API with REAL ML Models")
 print("=" * 60)
@@ -1130,3 +1143,4 @@ if __name__ == '__main__':
     
 
     app.run(debug=True, host='0.0.0.0', port=5000)
+
