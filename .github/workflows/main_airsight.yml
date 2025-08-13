@@ -1,67 +1,82 @@
-name: Build & Deploy AirSight to Azure Web App
+name: Build and deploy Python app to Azure Web App - AirSight
 
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
 
-concurrency:
-  group: deploy-airsight
-  cancel-in-progress: true
+env:
+  WEBAPP_NAME: AirSight              # <-- your App Service name
+  RESOURCE_GROUP: "AirSight_group-ad27"                 # <-- set to your RG name to run the config step
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
-
-    env:
-      APP_NAME: AirSight            # <-- EDIT if your App Service name differs
-      SLOT_NAME: Production         # remove this line if using the default slot
-      DEPLOY_PATH: .                # will be overwritten if a build folder is found
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ---------- Optional: Node build if package.json exists ----------
-      - name: Detect Node project
-        id: detect_node
-        shell: bash
-        run: |
-          if [ -f "package.json" ]; then
-            echo "has_node=true" >> $GITHUB_OUTPUT
-          else
-            echo "has_node=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Setup Node
-        if: steps.detect_node.outputs.has_node == 'true'
-        uses: actions/setup-node@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          node-version: '20'
-          cache: 'npm'
+          python-version: "3.10"
 
-      - name: Install & Build (Node)
-        if: steps.detect_node.outputs.has_node == 'true'
+      # Vendor dependencies into the repo (works with Azure Linux Python images)
+      - name: Install dependencies (vendored)
         run: |
-          npm ci
-          npm run build --if-present
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -t .python_packages/lib/site-packages
 
-      # ---------- Decide what to deploy ----------
-      - name: Choose deploy path
-        id: choose_path
-        shell: bash
+      # Quick sanity checks (edit file names as needed)
+      - name: Sanity check
         run: |
-          for d in build dist out .next nextjs .output public; do
-            if [ -d "$d" ]; then
-              echo "Found build folder: $d"
-              echo "DEPLOY_PATH=$d" >> $GITHUB_ENV
-              break
-            fi
-          done
-          echo "Deploying from: ${DEPLOY_PATH}"
-          ls -la "${DEPLOY_PATH}"
+          test -f flask_api_backend.py || (echo "flask_api_backend.py missing" && exit 1)
+          test -f index.html || (echo "index.html missing" && exit 1)
+          python -c "import pkgutil; print('gunicorn OK' if pkgutil.find_loader('gunicorn') else 'gunicorn MISSING')"
 
-      # ---------- Preflight: verify secrets are visible to this job ----------
+      # Package only what we need into a folder to upload as an artifact
+      - name: Stage artifact
+        run: |
+          mkdir -p package
+          shopt -s dotglob
+          cp -r \
+            aqi_prediction_system.py \
+            flask_api_backend.py \
+            index.html \
+            static \
+            templates \
+            .python_packages \
+            package/ 2>/dev/null || true
+          # also include any other app files you need:
+          rsync -a --exclude 'package' --exclude '.git' --exclude '.github' \
+            ./ package/ >/dev/null 2>&1 || true
+          echo "Contents of package/:"
+          ls -la package | sed -n '1,200p'
+
+      - name: Upload artifact for deployment
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-app
+          path: package
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: python-app
+          path: release
+
+      # --- Azure login (using the secrets you showed) ---
       - name: Verify Azure secrets
         shell: bash
         env:
@@ -69,13 +84,10 @@ jobs:
           TID: ${{ secrets.AZUREAPPSERVICE_TENANTID_E90AD2769AFE4313B72013DAC9E3F102 }}
           SID: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6EC81AD7847842CAA14260C11B733745 }}
         run: |
-          MISSING=0
-          [ -z "$CID" ] && echo "::error::Missing secret: client-id" && MISSING=1
-          [ -z "$TID" ] && echo "::error::Missing secret: tenant-id" && MISSING=1
-          [ -z "$SID" ] && echo "::error::Missing secret: subscription-id" && MISSING=1
-          [ $MISSING -eq 1 ] && exit 1
+          [ -z "$CID" ] && echo "::error::Missing client-id secret" && exit 1 || true
+          [ -z "$TID" ] && echo "::error::Missing tenant-id secret" && exit 1 || true
+          [ -z "$SID" ] && echo "::error::Missing subscription-id secret" && exit 1 || true
 
-      # ---------- Azure Login (uses your selected repo secrets) ----------
       - name: Azure Login
         uses: azure/login@v2
         with:
@@ -83,10 +95,23 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_E90AD2769AFE4313B72013DAC9E3F102 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6EC81AD7847842CAA14260C11B733745 }}
 
-      # ---------- Deploy ----------
+      # Optional: configure app settings and startup (Linux)
+      - name: Configure app settings and startup
+        if: env.RESOURCE_GROUP != ''
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az webapp config appsettings set -g "${{ env.RESOURCE_GROUP }}" -n "${{ env.WEBAPP_NAME }}" --settings \
+              SCM_DO_BUILD_DURING_DEPLOYMENT=0 \
+              WEBSITE_RUN_FROM_PACKAGE=1 \
+              PYTHONPATH=/home/site/wwwroot/.python_packages/lib/site-packages \
+              WEBSITES_PORT=8000
+            az webapp config set -g "${{ env.RESOURCE_GROUP }}" -n "${{ env.WEBAPP_NAME }}" \
+              --startup-file 'bash -lc "python aqi_prediction_system.py & exec gunicorn --bind 0.0.0.0:${PORT:-8000} flask_api_backend:app"'
+
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
-          app-name: ${{ env.APP_NAME }}
-          slot-name: ${{ env.SLOT_NAME }}
-          package: ${{ env.DEPLOY_PATH }}
+          app-name: ${{ env.WEBAPP_NAME }}
+          slot-name: ${{ env.SLOT_NAME }}      # remove if not using slots
+          package: release
