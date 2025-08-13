@@ -6,7 +6,7 @@
 
 class WorkingPredictionInterface {
     constructor() {
-        this.API_BASE_URL = "http://127.0.0.1:5000/api";
+        this.API_BASE_URL = "/api";
         this.currentCalendarDate = new Date();
         this.selectedDate = new Date();
         this.selectedModel = 'gradient_boosting';
@@ -2844,4 +2844,5 @@ if (!document.getElementById('animatedChartStyles')) {
 console.log('✅ COMPLETE Prediction System Loaded - 1700+ Lines + Working Animated Charts');
 console.log('🎯 Features: Full API integration, Enhanced charts, Keyboard shortcuts, Smooth animations');
 console.log('⌨️  Shortcuts: Ctrl+1 (hourly), Ctrl+2 (daily), Ctrl+3 (weekly)');
+
 console.log('🛌 Ready for Prabhu-Raj-Samraj to get some well-deserved sleep! Animated charts should work perfectly now.');
