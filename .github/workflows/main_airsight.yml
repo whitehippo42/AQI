@@ -1,4 +1,5 @@
 name: Deploy to Azure
+
 on:
   push:
     branches: [ main ]
@@ -7,33 +8,34 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write         # <-- REQUIRED for OIDC
+      contents: read
+
     steps:
-    - uses: actions/checkout@v2
-    
-    - name: Set up Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: '3.10'
-        
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        
-       
-    - name: Login to Azure
-      uses: azure/login@v2
-      with:
-        client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_1037BCA6228F48A080058B26815B2FFE }}
-        tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_C6E4E3D410CF477E9DBD39844D10946F }}
-        subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_562638A3172A4097B90478AD56F67AEF }}
+      - uses: actions/checkout@v4
 
-    - name: 'Deploy to Azure Web App'
-      uses: azure/webapps-deploy@v3
-      id: deploy-to-webapp
-      with:
-        app-name: 'AirSight'
-        slot-name: 'Production'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          auth-type: 'SERVICE_PRINCIPAL'
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_1037BCA6228F48A080058B26815B2FFE }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_C6E4E3D410CF477E9DBD39844D10946F }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_562638A3172A4097B90478AD56F67AEF }}
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: 'AirSight'
+          slot-name: 'production'   # Azure uses lowercase internally
+          package: .
