@@ -1670,6 +1670,7 @@ body {
   );
 }
 
+/* Enhanced calendar grid with better overflow handling */
 .grid.grid-cols-7 {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
@@ -1678,6 +1679,9 @@ body {
     border-radius: 12px;
     background: #f8fafc;
     box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02);
+    overflow: hidden; /* Prevent calendar overflow */
+    max-width: 100%;
+    min-height: 0; /* Allow grid to shrink */
 }
 
 .calendar-header-cell {
@@ -1733,19 +1737,30 @@ body {
     z-index: 10;
 }
 
+/* Enhanced today highlighting for calendar */
 .calendar-day-improved.calendar-today {
     border-width: 3px;
-    border-color: #000401 !important;
-    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
+    border-color: #22c55e !important; /* Use proper green color */
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.3), 0 4px 12px rgba(34, 197, 94, 0.2);
     animation: pulse-today 2s infinite;
+    position: relative;
+}
+
+.calendar-day-improved.calendar-today::before {
+    content: "📍";
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    font-size: 12px;
+    z-index: 1;
 }
 
 @keyframes pulse-today {
     0%, 100% {
-        box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
+        box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.3), 0 4px 12px rgba(34, 197, 94, 0.2);
     }
     50% {
-        box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.1);
+        box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.2), 0 4px 16px rgba(34, 197, 94, 0.3);
     }
 }
 
@@ -3416,20 +3431,17 @@ h3 + canvas,
     box-shadow: 0 4px 16px rgba(34, 197, 94, 0.3);
 }
 
-/* FIXED Model Dropdown Container */
+/* FIXED Model Dropdown Container - Consolidated z-index */
 .pred-model-dropdown-container {
     position: relative !important;
-    z-index: 999998 !important; /* MAXIMUM z-index */
+    z-index: 9999 !important; /* Consistent z-index */
     overflow: visible !important;
-    position: relative;
     min-width: 220px;
-    z-index: 99999;
-    overflow: visible !important; /* CRITICAL FIX */
 }
 
 .pred-model-dropdown-trigger {
    position: relative !important;
-    z-index: 999998 !important;
+    z-index: 9998 !important; /* Lower than container */
     display: flex;
     align-items: center;
     justify-content: space-between;

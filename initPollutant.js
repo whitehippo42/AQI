@@ -16,6 +16,29 @@ window.pollutantInitialized = false;
 window.selectedMonth = null;
 window.selectedPollutant = null;
 
+// Simple caching mechanism for pollutant data  
+const pollutantCache = {
+    data: new Map(),
+    TTL: 3 * 60 * 1000, // 3 minutes cache
+    
+    get(key) {
+        const item = this.data.get(key);
+        if (item && Date.now() - item.timestamp < this.TTL) {
+            console.log('📱 Using cached pollutant data');
+            return item.data;
+        }
+        return null;
+    },
+    
+    set(key, data) {
+        this.data.set(key, {
+            data: data,
+            timestamp: Date.now()
+        });
+        console.log('💾 Pollutant data cached');
+    }
+};
+
 // Main initialization function
 async function initPollutant(filter = "daily", pollutant = "PM2.5") {
     try {

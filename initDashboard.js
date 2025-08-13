@@ -7,18 +7,54 @@ let dashboardChart = null;
 // Single source of truth for current AQI value
 let currentAQIValue = null;
 
+// Simple caching mechanism for dashboard data
+const dashboardCache = {
+    data: new Map(),
+    TTL: 5 * 60 * 1000, // 5 minutes cache
+    
+    get(key) {
+        const item = this.data.get(key);
+        if (item && Date.now() - item.timestamp < this.TTL) {
+            console.log('📱 Using cached dashboard data');
+            return item.data;
+        }
+        return null;
+    },
+    
+    set(key, data) {
+        this.data.set(key, {
+            data: data,
+            timestamp: Date.now()
+        });
+        console.log('💾 Dashboard data cached');
+    },
+    
+    clear() {
+        this.data.clear();
+        console.log('🗑️ Dashboard cache cleared');
+    }
+};
+
 async function initDashboard() {
     try {
         showLoadingState();
         
         const apiDate = window.AirSightDate.getCurrentDate();
         const defaultModel = 'gbr';
-        const response = await fetch(`${API_BASE_URL}/dashboard?date=${apiDate}&model=${defaultModel}`);
-
-        const data = await response.json();
+        const cacheKey = `dashboard-${apiDate}-${defaultModel}`;
         
-        if (!response.ok) {
-            throw new Error(data.error || 'Failed to fetch dashboard data');
+        // Check cache first
+        let data = dashboardCache.get(cacheKey);
+        if (!data) {
+            const response = await fetch(`${API_BASE_URL}/dashboard?date=${apiDate}&model=${defaultModel}`);
+            data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to fetch dashboard data');
+            }
+            
+            // Cache the data
+            dashboardCache.set(cacheKey, data);
         }
         
         console.log('Dashboard data received for date:', apiDate, data);
@@ -40,6 +76,36 @@ async function initDashboard() {
     } catch (error) {
         console.error('Error initializing dashboard:', error);
         showErrorState(error.message);
+    }
+}
+
+// Enhanced chart error handling
+function showChartError(message) {
+    const chartContainer = document.getElementById('airQualityChart')?.parentElement;
+    if (chartContainer) {
+        const errorHTML = `
+            <div class="chart-error-state" style="
+                text-align: center; 
+                padding: 40px; 
+                background: #fef2f2; 
+                border: 2px solid #fca5a5;
+                border-radius: 12px; 
+                margin: 20px;
+            ">
+                <h3 style="color: #dc2626; margin-bottom: 10px;">⚠️ Chart Error</h3>
+                <p style="color: #666; margin-bottom: 20px;">${message}</p>
+                <button onclick="location.reload()" style="
+                    padding: 8px 16px; 
+                    background: #22c55e; 
+                    color: white;
+                    border: none; 
+                    border-radius: 6px; 
+                    cursor: pointer;
+                    font-weight: 500;
+                ">🔄 Reload</button>
+            </div>
+        `;
+        chartContainer.innerHTML = errorHTML;
     }
 }
 
@@ -214,22 +280,30 @@ function updateAirQualityChart(chartData, chartLabels = null, currentAqi = null,
     console.log('   Current AQI from dashboard:', currentAqi);
     console.log('   Expected today position:', getCurrentDayPosition());
 
-    // 🚨 VALIDATION: Ensure we have real data
+    // 🚨 ENHANCED VALIDATION: Ensure we have real data
     if (!chartData || !Array.isArray(chartData) || chartData.length === 0) {
         console.error('❌ NO CHART DATA PROVIDED! Chart cannot render without model data.');
+        showChartError('No data available for the selected period');
         return;
     }
 
-    // 🚨 VALIDATION: Check data format
-    const hasValidData = chartData.every(value => typeof value === 'number' && !isNaN(value));
+    // 🚨 ENHANCED VALIDATION: Check data format and ranges
+    const hasValidData = chartData.every(value => typeof value === 'number' && !isNaN(value) && value >= 0);
     if (!hasValidData) {
-        console.error('❌ INVALID CHART DATA! All values must be valid numbers.');
-        console.log('   Invalid data:', chartData.filter(value => typeof value !== 'number' || isNaN(value)));
+        console.error('❌ INVALID CHART DATA! All values must be valid positive numbers.');
+        const invalidData = chartData.filter(value => typeof value !== 'number' || isNaN(value) || value < 0);
+        console.log('   Invalid data points:', invalidData);
+        showChartError(`Invalid data detected: ${invalidData.length} invalid points`);
         return;
     }
 
+    // 🚨 VALIDATION: Check data range sanity
     const maxAqi = Math.max(...chartData);
     const minAqi = Math.min(...chartData);
+    
+    if (maxAqi > 500 || minAqi < 0) {
+        console.warn('⚠️ Data contains unusual AQI values outside normal range (0-500)');
+    }
     
     console.log(`📊 Real Model Data Range: ${minAqi} - ${maxAqi} AQI`);
     console.log(`📊 Data points received: ${chartData.length}`);
@@ -600,9 +674,11 @@ function updateAirQualityChart(chartData, chartLabels = null, currentAqi = null,
                     ctx.setLineDash([6, 4]);
                     ctx.stroke();
                     
-                    // Today label
+                    // Today label - FIXED: Use dynamic date
                     ctx.setLineDash([]);
-                    const labelText = `Today (10/8)`;
+                    const currentDate = new Date();
+                    const todayFormatted = `${currentDate.getMonth() + 1}/${currentDate.getDate()}`;
+                    const labelText = `Today (${todayFormatted})`;
                     
                     ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
                     ctx.textAlign = 'center';
