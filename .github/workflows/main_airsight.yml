@@ -1,47 +1,63 @@
-name: Build and deploy AirSight
+name: Deploy AirSight to Azure Web App
 
 on:
   push:
-    branches: [main]
-  workflow_dispatch: {}
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-airsight
+  cancel-in-progress: true
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    permissions: { contents: read }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.10" }
-      - name: Vendor dependencies into .python_packages
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt -t .python_packages/lib/site-packages
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: python-app
-          if-no-files-found: error
-          path: |
-            .
-            !.git/
-            !.github/
-            !venv/
-            !**/__pycache__/
-
   deploy:
     runs-on: ubuntu-latest
-    needs: build
-    permissions: { contents: read, id-token: write }
+
+    env:
+      # Change if your build workflow publishes a different artifact name
+      ARTIFACT_NAME: airsight-artifact
+      ARTIFACT_DOWNLOAD_PATH: artifact_tmp
+
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # If your build is produced in a separate workflow, download it:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
         with:
-          name: python-app
-          path: .     # flatten into root
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ env.ARTIFACT_DOWNLOAD_PATH }}
+
+      # Flatten artifact into workspace root so webapps-deploy can deploy "."
+      - name: Flatten artifact into workspace root
+        shell: bash
+        run: |
+          shopt -s dotglob
+          echo "Before flatten:"
+          ls -la
+          if [ -d "${{ env.ARTIFACT_DOWNLOAD_PATH }}" ]; then
+            echo "Moving contents of '${{ env.ARTIFACT_DOWNLOAD_PATH }}' to workspace root..."
+            mv "${{ env.ARTIFACT_DOWNLOAD_PATH }}"/* .
+            rm -rf "${{ env.ARTIFACT_DOWNLOAD_PATH }}"
+          else
+            echo "No artifact dir found; assuming build output already in repo root."
+          fi
+          echo "After flatten:"
+          ls -la
+
+      # 🔐 Azure login using your existing long secret names
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_32FBB5890BF24D90BABB0420ADE93AAC }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_E90AD2769AFE4313B72013DAC9E3F102 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_6EC81AD7847842CAA14260C11B733745 }}
+
+      # 🚀 Deploy the root folder (now containing your built app)
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
-          app-name: AirSight
-          slot-name: Production
+          app-name: AirSight              # change if your App Service name differs
+          slot-name: Production           # remove if deploying to default slot
           package: .
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE }}
